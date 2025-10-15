@@ -23,7 +23,7 @@ void OrderCache::addOrder(Order order) {
     }
     
     // Store the order
-    m_orders[orderId] = order;
+    m_orders.emplace(orderId, order);
     
     // Index by user
     m_ordersByUser[order.user()].insert(orderId);
@@ -79,6 +79,11 @@ void OrderCache::cancelOrdersForUser(const std::string& user) {
 }
 
 void OrderCache::cancelOrdersForSecIdWithMinimumQty(const std::string& securityId, unsigned int minQty) {
+    // Invalid inputs - don't cancel anything
+    if (securityId.empty() || minQty == 0) {
+        return;
+    }
+    
     auto secIt = m_ordersBySecId.find(securityId);
     if (secIt == m_ordersBySecId.end()) {
         return; // No orders for this security

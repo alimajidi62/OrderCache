@@ -1,2 +1,4 @@
 ﻿augmenta-cpp-20250409/build
 augmenta-cpp-20250409/.vscode
+*.exe
+*.obj
