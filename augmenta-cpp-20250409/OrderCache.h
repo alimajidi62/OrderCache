@@ -94,6 +94,15 @@ class OrderCache : public OrderCacheInterface
 
   std::vector<Order> getAllOrders() const override;
 
+ public:
+   // Constructor to pre-allocate capacity
+   OrderCache() {
+       // Pre-allocate for expected load - assume ~1M orders, 1K users, 1K securities
+       m_orders.reserve(1000000);
+       m_ordersByUser.reserve(1000);
+       m_ordersBySecId.reserve(1000);
+   }
+
  private:
 
    // Store orders by order ID for quick lookup and cancellation

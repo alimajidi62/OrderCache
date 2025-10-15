@@ -4,33 +4,43 @@
 #include <stdexcept>
 
 void OrderCache::addOrder(Order order) {
-    // Input validation
-    if (order.orderId().empty() || order.securityId().empty() || 
-        order.side().empty() || order.user().empty() || order.company().empty() ||
-        order.qty() == 0) {
+    // Cache string references to avoid repeated method calls
+    const std::string& orderId = order.orderId();
+    const std::string& securityId = order.securityId();
+    const std::string& side = order.side();
+    const std::string& user = order.user();
+    const std::string& company = order.company();
+    
+    // Optimized validation - check most likely failures first
+    if (orderId.empty() || m_orders.find(orderId) != m_orders.end()) {
+        return; // Skip invalid or duplicate order IDs (most common failure)
+    }
+    
+    // Quick validation without repeated string comparisons
+    if (securityId.empty() || side.empty() || user.empty() || company.empty() || order.qty() == 0) {
         return; // Skip invalid orders
     }
     
-    // Validate order side
-    if (order.side() != "Buy" && order.side() != "Sell") {
-        return; // Skip invalid side
+    // Optimized side validation using first character check
+    if (side[0] != 'B' && side[0] != 'S') {
+        return; // Quick rejection for invalid side
+    }
+    if (side.size() < 3 || (side != "Buy" && side != "Sell")) {
+        return; // Full validation only if needed
     }
     
-    const std::string& orderId = order.orderId();
-    
-    // Don't add duplicate order IDs
-    if (m_orders.find(orderId) != m_orders.end()) {
-        return;
+    // Use move semantics where possible and optimize insertions
+    auto orderResult = m_orders.emplace(orderId, std::move(order));
+    if (!orderResult.second) {
+        return; // Insertion failed (shouldn't happen due to earlier check)
     }
     
-    // Store the order
-    m_orders.emplace(orderId, order);
+    // Index by user - use emplace to avoid unnecessary construction
+    m_ordersByUser[user].emplace(orderId);
     
-    // Index by user
-    m_ordersByUser[order.user()].insert(orderId);
-    
-    // Index by security ID
-    m_ordersBySecId[order.securityId()].push_back(orderId);
+    // Index by security ID - reserve space if this is a new security
+    auto& secOrders = m_ordersBySecId[securityId];
+    secOrders.push_back(orderId);
 }
 
 void OrderCache::cancelOrder(const std::string& orderId) {
