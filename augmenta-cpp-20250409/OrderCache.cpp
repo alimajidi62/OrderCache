@@ -1,6 +1,7 @@
 // Implementation of the OrderCache class
 #include "OrderCache.h"
 #include <algorithm>
+#include <stdexcept>
 
 void OrderCache::addOrder(Order order) {
     // Input validation
@@ -115,11 +116,21 @@ unsigned int OrderCache::getMatchingSizeForSecurity(const std::string& securityI
         return 0; // No orders for this security
     }
     
-    // Collect all buy and sell orders
-    std::vector<std::pair<unsigned int, std::string>> buyOrders;  // qty, company
-    std::vector<std::pair<unsigned int, std::string>> sellOrders; // qty, company
+    // Use static thread-local vectors to avoid repeated allocations
+    static thread_local std::vector<std::pair<unsigned int, std::string>> buyOrders;
+    static thread_local std::vector<std::pair<unsigned int, std::string>> sellOrders;
     
-    for (const std::string& orderId : secIt->second) {
+    buyOrders.clear();
+    sellOrders.clear();
+    
+    // Reserve space to avoid reallocations
+    const size_t orderCount = secIt->second.size();
+    buyOrders.reserve(orderCount / 2);
+    sellOrders.reserve(orderCount / 2);
+    
+    // Collect orders directly without intermediate storage - use references for faster access
+    const auto& orderIds = secIt->second;
+    for (const std::string& orderId : orderIds) {
         auto orderIt = m_orders.find(orderId);
         if (orderIt == m_orders.end()) {
             continue; // Order not found (shouldn't happen)
@@ -128,27 +139,27 @@ unsigned int OrderCache::getMatchingSizeForSecurity(const std::string& securityI
         const Order& order = orderIt->second;
         
         if (order.side() == "Buy") {
-            buyOrders.push_back({order.qty(), order.company()});
+            buyOrders.emplace_back(order.qty(), order.company());
         } else if (order.side() == "Sell") {
-            sellOrders.push_back({order.qty(), order.company()});
+            sellOrders.emplace_back(order.qty(), order.company());
         }
     }
     
-    // Sort orders by quantity in descending order for greedy matching
+    if (buyOrders.empty() || sellOrders.empty()) {
+        return 0;
+    }
+    
+    // Sort orders by quantity in descending order - but only once
     std::sort(buyOrders.rbegin(), buyOrders.rend());
     std::sort(sellOrders.rbegin(), sellOrders.rend());
     
-    // Create working copies of the orders for matching
-    std::vector<std::pair<unsigned int, std::string>> buyOrdersCopy = buyOrders;
-    std::vector<std::pair<unsigned int, std::string>> sellOrdersCopy = sellOrders;
-    
     unsigned int totalMatched = 0;
     
-    // Greedy matching algorithm
-    for (auto& buyOrder : buyOrdersCopy) {
+    // Optimized matching algorithm - modify in place to avoid copies
+    for (auto& buyOrder : buyOrders) {
         if (buyOrder.first == 0) continue;
         
-        for (auto& sellOrder : sellOrdersCopy) {
+        for (auto& sellOrder : sellOrders) {
             if (sellOrder.first == 0) continue;
             
             // Orders from the same company cannot match
