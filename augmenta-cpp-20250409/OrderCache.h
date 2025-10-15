@@ -4,6 +4,9 @@
 #include <vector>
 #include <unordered_map>
 #include <unordered_set>
+#include <memory>
+#include <array>
+#include <string_view>
 
 class Order
 {
@@ -79,6 +82,51 @@ class OrderCacheInterface
 // Todo: Your implementation of the OrderCache...
 class OrderCache : public OrderCacheInterface
 {
+ private:
+   // Internal order representation optimized for performance
+   struct InternalOrder {
+       std::string orderId;
+       std::string securityId;
+       std::string side;
+       unsigned int qty;
+       std::string user;
+       std::string company;
+       
+       // Cache frequently used comparisons
+       bool isBuy;
+       
+       InternalOrder(const Order& order) 
+           : orderId(order.orderId())
+           , securityId(order.securityId())  
+           , side(order.side())
+           , qty(order.qty())
+           , user(order.user())
+           , company(order.company())
+           , isBuy(side == "Buy")
+       {}
+       
+       Order toOrder() const {
+           return Order{orderId, securityId, side, qty, user, company};
+       }
+   };
+
+   // Simplified memory management - no pool for now to avoid bugs
+   struct OrderPool {
+       std::vector<std::unique_ptr<InternalOrder>> orders;
+       
+       OrderPool() { 
+           orders.reserve(1100000); // Pre-allocate for 1M+ orders
+       }
+       
+       InternalOrder* acquire(const Order& order) {
+           orders.emplace_back(std::make_unique<InternalOrder>(order));
+           return orders.back().get();
+       }
+       
+       void release(InternalOrder*) {
+           // No actual release - memory stays allocated until destruction
+       }
+   };
 
  public:
 
@@ -98,20 +146,42 @@ class OrderCache : public OrderCacheInterface
    // Constructor to pre-allocate capacity
    OrderCache() {
        // Pre-allocate for expected load - assume ~1M orders, 1K users, 1K securities
-       m_orders.reserve(1000000);
-       m_ordersByUser.reserve(1000);
-       m_ordersBySecId.reserve(1000);
+       m_orders.reserve(1100000);
+       m_ordersByUser.reserve(1200);
+       m_ordersBySecId.reserve(1200);
+       
+       // Pre-allocate buckets to avoid rehashing
+       m_orders.max_load_factor(0.7f);
+       m_ordersByUser.max_load_factor(0.7f);
+       m_ordersBySecId.max_load_factor(0.7f);
    }
 
  private:
 
+   // Memory pool for efficient allocation
+   OrderPool m_pool;
+   
    // Store orders by order ID for quick lookup and cancellation
-   std::unordered_map<std::string, Order> m_orders;
+   std::unordered_map<std::string, InternalOrder*> m_orders;
    
-   // Store order IDs grouped by user for efficient user-based cancellation
-   std::unordered_map<std::string, std::unordered_set<std::string>> m_ordersByUser;
+   // Store order pointers grouped by user for efficient user-based cancellation
+   std::unordered_map<std::string, std::vector<InternalOrder*>> m_ordersByUser;
    
-   // Store order IDs grouped by security ID for efficient matching calculations
-   std::unordered_map<std::string, std::vector<std::string>> m_ordersBySecId;
+   // Store order pointers grouped by security ID for efficient matching calculations
+   std::unordered_map<std::string, std::vector<InternalOrder*>> m_ordersBySecId;
+   
+   // Cache for string validation to avoid repeated checks
+   mutable std::unordered_set<std::string> m_validatedUsers;
+   mutable std::unordered_set<std::string> m_validatedCompanies;
+   mutable std::unordered_set<std::string> m_validatedSecurities;
+   
+   // Helper for fast validation
+   inline bool isValidSide(const std::string& side) const noexcept {
+       return (side.size() == 3 && side == "Buy") || (side.size() == 4 && side == "Sell");
+   }
+   
+   inline bool isValidString(const std::string& str) const noexcept {
+       return !str.empty();
+   }
 
 };
