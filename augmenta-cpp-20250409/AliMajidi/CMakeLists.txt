@@ -1,0 +1,70 @@
+cmake_minimum_required(VERSION 3.14)
+project(OrderCache VERSION 1.0 LANGUAGES CXX)
+
+# Set C++ standard to C++17 as required by the assignment
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Add compiler flags for optimization in Release mode
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+  elseif(MSVC)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2")
+  endif()
+endif()
+
+# Try to find Google Test first
+find_package(GTest QUIET)
+
+if(NOT GTest_FOUND)
+    # If not found, use FetchContent to download
+    include(FetchContent)
+    
+    FetchContent_Declare(
+      googletest
+      GIT_REPOSITORY https://github.com/google/googletest.git
+      GIT_TAG        release-1.12.1
+      GIT_SHALLOW    TRUE
+    )
+    
+    # For Windows: Prevent overriding the parent project's compiler/linker settings
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    
+    # Make available but don't build tests for googletest itself
+    set(BUILD_GMOCK OFF CACHE BOOL "" FORCE)
+    set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
+    
+    FetchContent_MakeAvailable(googletest)
+    
+    # Alias the targets
+    add_library(GTest::gtest ALIAS gtest)
+    add_library(GTest::gtest_main ALIAS gtest_main)
+endif()
+
+# Source files
+set(SOURCES
+    OrderCache.cpp
+    OrderCacheTest.cpp
+)
+
+# Add the executable
+add_executable(OrderCacheTest ${SOURCES})
+
+# Link against Google Test
+if(GTest_FOUND)
+    target_link_libraries(OrderCacheTest GTest::gtest GTest::gtest_main)
+else()
+    target_link_libraries(OrderCacheTest gtest gtest_main)
+endif()
+
+# Enable testing
+enable_testing()
+add_test(NAME OrderCacheTest COMMAND OrderCacheTest)
+
+# Print configuration summary
+message(STATUS "CMake version: ${CMAKE_VERSION}")
+message(STATUS "C++ compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+message(STATUS "Google Test found: ${GTest_FOUND}")
